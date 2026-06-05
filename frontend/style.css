@@ -1,0 +1,175 @@
+body {
+    margin: 0;
+    padding: 0;
+
+    background-color: #0f172a;
+    color: #e2e8f0;
+
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+/* HEADER */
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 20px;
+
+    border-bottom: 1px solid #334155;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 2rem;
+}
+
+header p {
+    margin-top: 5px;
+    color: #94a3b8;
+}
+
+/* LIVE GRID */
+
+.live-grid {
+    display: grid;
+
+    grid-template-columns: repeat(4, 1fr);
+
+    gap: 20px;
+
+    padding: 20px;
+}
+
+/* CARD */
+
+.card {
+    background-color: #1e293b;
+
+    border-radius: 14px;
+
+    padding: 25px;
+
+    min-height: 180px;
+
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+
+    text-align: center;
+}
+
+.card h2 {
+    margin-top: 0;
+    font-size: 1rem;
+    color: #94a3b8;
+}
+
+.card p {
+    font-size: 3rem;
+    margin: 20px 0 0 0;
+}
+
+/* CHARTS */
+
+.charts {
+    padding: 20px;
+
+    display: grid;
+
+    gap: 20px;
+}
+
+.chart-card {
+    background-color: #1e293b;
+
+    padding: 20px;
+
+    border-radius: 10px;
+
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+}
+
+.chart-card h2 {
+    margin-top: 0;
+    color: #94a3b8;
+}
+
+/* CANVAS */
+
+canvas {
+    width: 100%;
+    max-height: 400px;
+}
+
+.logo {
+    position: absolute;
+    top: 15px;
+    left: 20px;
+
+    width: 150px;
+    height: auto;
+
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+}
+
+.title-block {
+    flex-grow: 1;
+    text-align: center;
+}
+.compass-container {
+    position: relative;
+
+    width: 140px;
+    height: 140px;
+
+    margin-right: 10px;
+}
+.compass-base {
+    width: 100%;
+    height: 100%;
+}
+
+.compass-arrow {
+    position: absolute;
+
+    width: 6px;
+    height: 55px;
+
+    background: red;
+
+    left: 50%;
+    top: 50%;
+
+    transform-origin: bottom center;
+    transform: translate(-50%, -100%) rotate(0deg);
+
+    border-radius: 3px;
+
+    box-shadow: 0 0 10px red;
+}
+.status-line {
+    margin-top: 12px;
+    font-size: 1rem;
+    color: #94a3b8;
+    white-space: pre-line;
+}
+.trend-falling-fast {
+    color: #f87171;
+}
+
+.trend-falling {
+    color: #fb923c;
+}
+
+.trend-rising-fast {
+    color: #38bdf8;
+}
+
+.trend-rising {
+    color: #60a5fa;
+}
+
+.trend-stable {
+    color: #94a3b8;
+}

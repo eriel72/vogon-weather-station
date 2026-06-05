@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>VOGON WEATHER DASHBOARD</title>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <header>
+	    <img src="/static/logga.jpeg" class="logo">
+
+	<div class="title-block">
+        	<h1>-- VOGON BUREAU OF METROLOGY --</h1>
+        	<p>LIVE ENVIRONMENTAL TELEMETRY</p>
+        	<p>GRIM, ACCURATE, INEVITABLE</p>
+	</div>
+
+		<div class="compass-container">
+        	<img src="/static/compass.png" class="compass-base">
+        	<div id="compass-arrow" class="compass-arrow"></div>
+    	</div>
+
+    </header>
+
+    <!-- LIVE DATA -->
+  
+<section class="live-grid">
+
+    <div class="card">
+        <h2>Temperature</h2>
+        <p id="temp">-- °C</p>
+    </div>
+
+    <div class="card">
+        <h2>Humidity</h2>
+        <p id="humidity">-- %</p>
+    </div>
+
+    <div class="card">
+        <h2>Pressure</h2>
+        <p id="pressure">-- hPa</p>
+	<div id="pressure_status" class="status-line">→ Stable</div>
+    </div>
+
+    <div class="card">
+        <h2>Dewpoint</h2>
+        <p id="dewpoint">-- °C</p>
+        <div id="dewpoint_status" class="status-line">○ Stable</div>
+    </div>
+
+    <div class="card">
+        <h2>Wind Avg</h2>
+        <p id="wind_avg">-- m/s</p>
+    </div>
+
+    <div class="card">
+        <h2>Wind Gust</h2>
+        <p id="wind_gust">-- m/s</p>
+    </div>
+
+    <div class="card">
+    	<h2>Rain</h2>
+    	<p id="rain">-- mm</p>
+    	<div id="rain_status" class="status-line">
+        last min: 0.0 mm
+    </div>
+</div>
+
+</section>
+
+    <!-- CHARTS -->
+    <section class="charts">
+
+        <div class="chart-card">
+            <h2>Temperature / Humidity</h2>
+            <canvas id="envChart"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <h2>Pressure</h2>
+            <canvas id="pressureChart"></canvas>
+        </div>
+
+        <div class="chart-card">
+            <h2>Rain</h2>
+            <canvas id="rainChart"></canvas>
+        </div>
+
+    </section>
+
+    <!-- JAVASCRIPT -->
+    <script src="/static/app.js?v=4"></script>
+
+</body>
+</html>
