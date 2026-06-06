@@ -65,10 +65,17 @@ def mqtt_reconnect():
 
     try:
         print("Reconnecting MQTT...")
-        client = MQTTClient("pico_weather", "192.168.1.160")
+
+        client = MQTTClient(
+            "pico_weather",
+            secrets.MQTT_SERVER
+        )
+
         client.connect()
+
         print("MQTT reconnected")
         return True
+
     except Exception as e:
         print("MQTT reconnect failed:", e)
         client = None
