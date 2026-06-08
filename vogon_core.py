@@ -124,7 +124,13 @@ def on_message(client, userdata, msg):
         print("CALLBACK ERROR TRACE:")
         traceback.print_exc()
 
-
+# ----- SLP -----
+def sea_level_pressure(pressure_hpa, temp_c, altitude_m=141):
+    temp_k = temp_c + 273.15
+    return pressure_hpa * pow(
+        1 - (0.0065 * altitude_m) / (temp_k + 0.0065 * altitude_m),
+        -5.257
+    )
 # ---------------- MAIN ----------------
 print("MQTT ingestion running...")
 
