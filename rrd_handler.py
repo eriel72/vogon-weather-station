@@ -5,7 +5,7 @@ import time
 import config
 
 rrd_lock = threading.Lock()
-_last_rrd_time = 0
+_last_rrd_time = {}
 
 RRD_MIN_INTERVAL = config.RRD_MIN_INTERVAL
 
@@ -15,10 +15,11 @@ def update_rrd(rrd_file, values, label):
 
     # ---------------- THROTTLE ----------------
     now = time.time()
-    if now - _last_rrd_time < RRD_MIN_INTERVAL:
+    last = _last_rrd_time.get(rrd_file, 0)
+    if now - last < RRD_MIN_INTERVAL:
         return
 
-    _last_rrd_time = now
+    _last_rrd_time[rrd_file] = now
 
     rrd_string = "N:" + ":".join(str(v) for v in values)
 

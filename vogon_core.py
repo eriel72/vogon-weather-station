@@ -57,7 +57,7 @@ def process_weather(data):
         update_rrd(WEATHER_RRD, [temp, hum, press, dp], "WEATHER")
 
     if rain_mm is not None:
-        update_rrd(RAIN_RRD, [rain_mm], "RAIN")
+        update_rrd(RAIN_RRD, [rain_total], "RAIN")
 
     if wind_avg is not None and wind_gust is not None and wind_dir is not None:
         update_rrd(WIND_RRD, [wind_avg, wind_gust, wind_dir], "WIND")
