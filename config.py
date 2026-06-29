@@ -30,4 +30,12 @@ PRESSURE_MIN = 800
 PRESSURE_MAX = 1200
 
 # ------------- RAIN GAUGE -------------
-RAIN_MM_PER_TIP = 0.2794   # CHANGHE THIS DEPENDING ON YOUR RAIN GAUGE
+RAIN_MM_PER_TIP = 0.329   # CHANGHE THIS DEPENDING ON YOUR RAIN GAUGE
+
+
+# ----------- Graphs --------------------
+# Data to uniform the graphs created
+
+GRAPH_DAYS = 7
+GRAPH_WIDTH = 1200
+GRAPH_HEIGHT = 400

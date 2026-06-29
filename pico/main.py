@@ -16,6 +16,8 @@ from ds18x20 import DS18X20
 from OneWireTemp import ONEWIRETEMP
 from state import RainState
 from umqtt.simple import MQTTClient
+from piicodev_ms5637 import PiicoDev_MS5637
+from sht41 import SHT41
 
 #--------------------------
 # LOAD RAIN COUNT
@@ -77,7 +79,7 @@ def mqtt_reconnect():
         return True
 
     except Exception as e:
-        print("MQTT reconnect failed:", e)
+        print("MQTT rec>>> onnect failed:", e)
         client = None
         return False
 
@@ -134,19 +136,37 @@ def rain_irq(pin):
 
 def ds_start(temp1wire):
     temp1wire.update()
+    
+def read_sht41(i2c):
+    # High precision measurement
+    i2c.writeto(SHT41_ADDR, b'\xFD')
+    time.sleep_ms(10)
+
+    data = i2c.readfrom(SHT41_ADDR, 6)
+
+    raw_t = (data[0] << 8) | data[1]
+    raw_rh = (data[3] << 8) | data[4]
+
+    temp = -45 + 175 * raw_t / 65535
+    rh = -6 + 125 * raw_rh / 65535
+
+    # Begränsa RH till 0–100 %
+    rh = max(0, min(100, rh))
+
+    return temp, rh
 
 # -----------------------------
 # INIT HARDWARE
 # -----------------------------
 
-i2c = machine.I2C(0, scl=machine.Pin(1), sda=machine.Pin(0), freq=100000)
+i2c = machine.I2C(0, scl=machine.Pin(1), sda=machine.Pin(0), freq=400000)
 
 oled = SSD1306_I2C(128, 64, i2c, addr=0x3C)
 oled.fill(0)
 oled.text("Booting...", 0, 0)
 oled.show()
 
-temp1wire = ONEWIRETEMP(machine.Pin(13))
+temp1wire = ONEWIRETEMP(machine.Pin(15))
 rain_pin = machine.Pin(16, machine.Pin.IN, machine.Pin.PULL_UP)
 
 #---------------------------
@@ -160,7 +180,15 @@ rain_pin.irq(trigger=machine.Pin.IRQ_FALLING, handler=rain_irq)
 #---------------------------
 
 sensor = BME280(i2c=i2c, address=0x77)
+sht = SHT41(i2c)
 adc = ADS1115(i2c, address=0x48, gain=ADS1115.GAIN_2_048V)
+MS5637 = PiicoDev_MS5637(
+    bus=0,
+    sda=machine.Pin(0),
+    scl=machine.Pin(1),
+    freq=100000,
+    addr=0x76
+)
 
 
 # -----------------------------
@@ -320,7 +348,18 @@ while True:
 
         bme_press = float(p) / 100
         bme_hum = float(h)
-
+        
+        # --------- SHT41 -----------
+        temp_1, humidity = sht.read()
+        if temp_1 is None:
+            print("SHT41 read failed")
+            continue
+        # --------- MS5637 ----------
+        temp_2, pressure = MS5637.read_temperature_and_pressure()
+        if temp_1 is None:
+            print("MS5637 read failed")
+            continue
+        
         wind_dir = 0
 
         # ---------- RAIN SAVE ----------
@@ -332,8 +371,8 @@ while True:
 
         # ---------- DEBUG ----------
         print("Temp:", ds_temp)
-        print("Pressure:", bme_press)
-        print("Humidity:", bme_hum)
+        print("Pressure:", pressure)
+        print("Humidity:", humidity)
         print("Wind avg:", wind_avg)
         print("Wind gust:", wind_gust)
         print("Loops:", loop_count)
@@ -343,8 +382,8 @@ while True:
         oled.fill(0)
         oled.text("Weather Station", 0, 0)
         oled.text("T: %.1fC" % (ds_temp if ds_temp else 0), 0, 16)
-        oled.text("P: %.0fhPa" % bme_press, 0, 28)
-        oled.text("H: %.0f%%" % bme_hum, 0, 40)
+        oled.text("P: %.0fhPa" % pressure, 0, 28)
+        oled.text("H: %.0f%%" % humidity, 0, 40)
         oled.text("L:%d" % loop_count, 0, 52)
         oled.show()
 
@@ -363,8 +402,8 @@ while True:
 
         data = {
             "temp": ds_temp,
-            "pressure": bme_press,
-            "humidity": bme_hum,
+            "pressure": pressure,
+            "humidity": humidity,
             "wind_avg": wind_avg,
             "wind_gust": wind_gust,
             "wind_dir": wind_dir,
