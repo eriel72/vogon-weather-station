@@ -2,12 +2,17 @@ VOGON Weather Station
 
 A home-built weather station based on a Raspberry Pi server and a Raspberry Pi Pico 2 W sensor node.
 
+I came up with the name for the project one day at work. I read "The Hitchhiker's Guide to the Galaxy"
+as a young man and thought that the Vogons would probably be the 'worst' Mertologists in the universe.
+
 Features
 Sensor Node (Raspberry Pi Pico 2 W)
 DS18B20 (1-Wire) temperature sensors
-BME280 temperature, humidity, and pressure sensor
+BME280 temperature, humidity, and pressure sensor, replaced by SHT41 and MS5637
 ADS1115 16-bit ADC
-SSD1306 OLED display
+SSD1306 OLED display (for dubugging during development)
+SHT41 Precision humidity , temperature sensor
+MS5637 Pressure Sensor
 Rain gauge using interrupt-driven pulse counting
 MQTT communication over Wi-Fi
 Server (Raspberry Pi)
@@ -23,3 +28,5 @@ Project Goals
 The goal of the project is to build a modular weather station using affordable hardware
 while providing long-term weather logging, data visualization, and future expansion
 possibilities such as LoRa communication, additional sensor nodes, and advanced weather analysis.
+The project is being developed continuously, BME280 is now replaced by SHT41 and MS5637 for better precision.
+But I leave the code for BME280 if someone wants to use it instead of the more advanced sensors.

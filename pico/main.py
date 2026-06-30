@@ -137,24 +137,21 @@ def rain_irq(pin):
 def ds_start(temp1wire):
     temp1wire.update()
     
-def read_sht41(i2c):
-    # High precision measurement
-    i2c.writeto(SHT41_ADDR, b'\xFD')
-    time.sleep_ms(10)
+def read_sht41_avg(sht, n=3):
+    temps = []
+    hums = []
 
-    data = i2c.readfrom(SHT41_ADDR, 6)
+    for _ in range(n):
+        t, h = sht.read()
+        if t is not None:
+            temps.append(t)
+            hums.append(h)
+        time.sleep_ms(200)
 
-    raw_t = (data[0] << 8) | data[1]
-    raw_rh = (data[3] << 8) | data[4]
+    if not temps:
+        return None, None
 
-    temp = -45 + 175 * raw_t / 65535
-    rh = -6 + 125 * raw_rh / 65535
-
-    # Begränsa RH till 0–100 %
-    rh = max(0, min(100, rh))
-
-    return temp, rh
-
+    return sum(temps) / len(temps), sum(hums) / len(hums)
 # -----------------------------
 # INIT HARDWARE
 # -----------------------------
@@ -247,7 +244,7 @@ except Exception as e:
 
 ds_request_time = 0
 ds_ready = False
-ds_temp = None
+
 
 loop_count = 0
 minute_counter = 0
@@ -258,7 +255,11 @@ wind_samples = []
 rain_interval = 0
 wind_gust = 0
 
+ds_temp = None
 last_temp = None
+sht_temp_ema = None
+humidity_ema = None
+
 
 wind_gust = 0
 
@@ -350,13 +351,27 @@ while True:
         bme_hum = float(h)
         
         # --------- SHT41 -----------
-        temp_1, humidity = sht.read()
+        temp_1, humidity = read_sht41_avg(sht, n=3)
         if temp_1 is None:
             print("SHT41 read failed")
             continue
+
+        # EMA-filter
+        if sht_temp_ema is None:
+            sht_temp_ema = temp_1
+            humidity_ema = humidity
+        else:
+            alpha = 0.2
+            sht_temp_ema = alpha * temp_1 + (1 - alpha) * sht_temp_ema
+            humidity_ema = alpha * humidity + (1 - alpha) * humidity_ema
+        
+        # ----- setting filered data-------
+        humidity = humidity_ema
+        temp_1 = sht_temp_ema
+        
         # --------- MS5637 ----------
         temp_2, pressure = MS5637.read_temperature_and_pressure()
-        if temp_1 is None:
+        if pressure is None:
             print("MS5637 read failed")
             continue
         
