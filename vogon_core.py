@@ -7,7 +7,7 @@ from validation import dewpoint, valid
 from rrd_handler import update_rrd
 from database import init_db, insert_weather
 from cache import latest_data
-
+from reporters.temperatur_nu import send_temperature
 
 WEATHER_RRD = config.WEATHER_RRD
 RAIN_RRD    = config.RAIN_RRD
@@ -18,10 +18,21 @@ WIND_RRD    = config.WIND_RRD
 def process_weather(data):
     print("PIPELINE RUNNING")
 
-    temp  = data.get("temp")
+    temp  = data.get("temp") # Official temp
     hum   = data.get("humidity")
     press = data.get("pressure")
     
+    # Individuella DS18B20
+    temp_green_nw = data.get("temp_green_nw")
+    temp_red_wnw = data.get("temp_red_wnw")
+    temp_blue_ne = data.get("temp_blue_ne")
+    temp_purple_ese = data.get("temp_purple_ese")
+    temp_selected_sensor = data.get("temp_selected_sensor")
+    
+    # Extra diagnostic temperatures from the sensor box
+    temp_box_ds18b20 = data.get("temp_box_ds18b20")
+    temp_sht = data.get("temp_sht")
+    temp_ms5637 = data.get("temp_ms5637")
 
     wind_avg  = data.get("wind_avg")
     wind_gust = data.get("wind_gust")
@@ -29,36 +40,50 @@ def process_weather(data):
 
     rain_tip   = data.get("rain_interval", 0)
     rain_total = data.get("rain_total", 0)
-
+    rain_total_tips = data.get("rain_total_tips", 0)
+    
     dp = dewpoint(temp, hum)
     slp = sea_level_pressure(press, temp)
 
-    rain_mm = round(rain_tip * config.RAIN_MM_PER_TIP, 1)
-    rain_total_mm = round(rain_total * config.RAIN_MM_PER_TIP, 1)
+    rain_mm = round(rain_tip * config.RAIN_MM_PER_TIP, 2)
+    rain_total_mm = round(rain_total, 2)
 
     latest_data.clear()
     latest_data.update({
-        "temp": temp,
+        "temp": temp,    # Official outdoor temperature (selected by Pico)
+        "temp_green_nw" : temp_green_nw,
+        "temp_red_wnw" : temp_red_wnw,
+        "temp_blue_ne" : temp_blue_ne,
+        "temp_purple_ese" : temp_purple_ese,  
+        "temp_selected_sensor" : temp_selected_sensor,
+        
+        "temp_sht": temp_sht,
+        "temp_ms5637": temp_ms5637,
+        "temp_box_ds18b20": temp_box_ds18b20,
+        
         "humidity": hum,
         "pressure": press,
         "pressure_slp": slp,
         "dewpoint": dp,
+        
         "wind_avg": wind_avg,
         "wind_gust": wind_gust,
         "wind_dir": wind_dir,
+        
         "rain_tip": rain_tip,
         "rain_total": rain_total,
         "rain_interval_mm": rain_mm,
-        "rain_total_mm": rain_total_mm
+        "rain_total_mm": rain_total_mm,
+        
     })
-
+        
     # ---------------- RRD ----------------
     if temp is not None and hum is not None and press is not None:
         update_rrd(WEATHER_RRD, [temp, hum, press, dp], "WEATHER")
 
     if rain_mm is not None:
-        update_rrd(RAIN_RRD, [rain_total], "RAIN")
-
+        update_rrd(RAIN_RRD, [rain_total_tips], "RAIN")
+        
     if wind_avg is not None and wind_gust is not None and wind_dir is not None:
         update_rrd(WIND_RRD, [wind_avg, wind_gust, wind_dir], "WIND")
 
@@ -75,16 +100,26 @@ def process_weather(data):
             wind_dir,
             rain_tip,
             rain_mm,
-            rain_total_mm
-            )
-
+            rain_total_mm,
+            temp_box_ds18b20,
+            temp_sht,
+            temp_ms5637,
+            temp_green_nw,
+            temp_red_wnw,
+            temp_blue_ne,
+            temp_purple_ese,
+            temp_selected_sensor,
+        )
         print("DB INSERT + COMMIT OK")
-
+           # Rapportera till temperatur.nu
+        if (config.TEMPERATUR_NU_ENABLED and temp is not None and -40 <= temp <= 50):
+            send_temperature(temp)
+    
     except Exception as e:
         print("DB ERROR:", e)
         traceback.print_exc()
-
-
+    
+ 
 # ---------------- MQTT CALLBACK ----------------
 def on_message(client, userdata, msg):
     try:
@@ -124,6 +159,7 @@ def on_message(client, userdata, msg):
         print("CALLBACK ERROR TRACE:")
         traceback.print_exc()
 
+
 # ----- SLP -----
 def sea_level_pressure(pressure_hpa, temp_c, altitude_m=141):
     temp_k = temp_c + 273.15
@@ -131,6 +167,8 @@ def sea_level_pressure(pressure_hpa, temp_c, altitude_m=141):
         1 - (0.0065 * altitude_m) / (temp_k + 0.0065 * altitude_m),
         -5.257
     )
+
+
 # ---------------- MAIN ----------------
 print("MQTT ingestion running...")
 

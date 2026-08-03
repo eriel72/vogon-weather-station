@@ -26,13 +26,26 @@ def live_weather():
         SELECT
             timestamp,
             temp,
+
+            temp_selected_sensor,
+            temp_green_nw,
+            temp_red_wnw,
+            temp_blue_ne,
+            temp_purple_ese,
+
+            temp_box_ds18b20,
+            temp_sht,
+            temp_ms5637,
+
             humidity,
             pressure,
             pressure_slp,
             dewpoint,
+
             wind_avg,
             wind_gust,
             wind_dir,
+
             rain_tip,
             rain_interval_mm,
             rain_total_mm
@@ -43,11 +56,24 @@ def live_weather():
 
     row = cur.fetchone()
     conn.close()
-    
+
     if row is None:
         return {"error": "no weather data"}
-    
-    return dict(row)
+
+    result = dict(row)
+
+    sensor_directions = {
+        "green_nw": "NW",
+        "red_wnw": "WNW",
+        "blue_ne": "NE",
+        "purple_ese": "ESE",
+    }
+
+    result["temp_selected_direction"] = sensor_directions.get(
+        result.get("temp_selected_sensor")
+    )
+
+    return result
 
 @app.get("/api/history/env")
 def history_env(hours: int = 24):
@@ -56,7 +82,7 @@ def history_env(hours: int = 24):
 
     cur.execute("""
         SELECT
-            timestamp,
+            datetime(timestamp, 'localtime') AS timestamp,
             temp,
             humidity,
             pressure,
@@ -83,7 +109,7 @@ def history_wind(hours: int = 24):
 
     cur.execute("""
         SELECT
-            timestamp,
+            datetime(timestamp, 'localtime') AS timestamp,
             wind_avg,
             wind_gust,
             wind_dir
@@ -109,7 +135,7 @@ def history_rain(hours: int = 24):
 
     cur.execute("""
         SELECT
-            timestamp,
+            datetime(timestamp, 'localtime') AS timestamp,
             COALESCE(rain_tip, 0) AS rain_tip,
             COALESCE(rain_interval_mm, 0) AS rain_interval_mm,
             COALESCE(rain_total_mm, 0) AS rain_total_mm
