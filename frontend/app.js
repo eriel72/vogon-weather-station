@@ -398,7 +398,72 @@ async function loadRainChart() {
         console.error("RAIN CHART ERROR:", error);
     }
 }
+//-------------- WIND CHART  --------------
+let windChart = null;
 
+async function loadWindChart() {
+    try {
+        const result = await fetchJson(
+            "/api/history/wind?hours=24"
+        );
+
+        const rows = result.data ?? [];
+        const labels = chartLabels(rows);
+
+        if (windChart) {
+            windChart.destroy();
+        }
+
+        windChart = new Chart(
+            chartCanvas("windChart"),
+            {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Average wind m/s",
+                            data: rows.map(
+                                row => row.wind_avg ?? null
+                            ),
+                            borderWidth: 2,
+                            tension: 0.25
+                        },
+                        {
+                            label: "Wind gust m/s",
+                            data: rows.map(
+                                row => row.wind_gust ?? null
+                            ),
+                            borderWidth: 2,
+                            tension: 0.25
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    animation: false,
+                    spanGaps: true,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "m/s"
+                            }
+                        }
+                    }
+                }
+            }
+        );
+
+    } catch (error) {
+        console.error("WIND CHART ERROR:", error);
+    }
+}
 
 // ---------------- STARTUP ----------------
 
@@ -407,13 +472,15 @@ async function startDashboard() {
         loadLiveData(),
         loadEnvChart(),
         loadPressureChart(),
-        loadRainChart()
+        loadRainChart(),
+	loadWindChart()
     ]);
 
     setInterval(loadLiveData, 5_000);
     setInterval(loadEnvChart, 60_000);
     setInterval(loadPressureChart, 60_000);
     setInterval(loadRainChart, 60_000);
+    setInterval(loadWindChart, 60_000);
 }
 
 
