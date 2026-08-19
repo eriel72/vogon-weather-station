@@ -16,7 +16,8 @@ from state import RainState
 from umqtt.simple import MQTTClient
 from piicodev_ms5637 import PiicoDev_MS5637
 from sht41 import SHT41
-
+from xs_wsds01 import XS_WSDS01
+from wind_minute import WindMinute
 
 # ============================================================
 # CONFIGURATION
@@ -29,6 +30,8 @@ MQTT_TEST_TOPIC = "test/topic"
 MQTT_SERVER = getattr(secrets, "MQTT_SERVER", "192.168.1.160")
 RAIN_DEBOUNCE_MS = 500
 SAVE_INTERVAL = 10000
+
+DEBUG = True
 
 DS18B20_SENSORS = {
     "green_nw": {
@@ -67,10 +70,25 @@ OUTDOOR_NAMES = (
 
 
 # ============================================================
+# UART SET UP
+# ============================================================
+uart = machine.UART(0, baudrate=9600, bits=8, parity=None, stop=1, tx=machine.Pin(12), rx=machine.Pin(13), timeout=200)
+
+wind_sensor = XS_WSDS01(uart=uart, de_pin=14)
+
+wind_minute = WindMinute(north_offset=76.0)
+
+WIND_SAMPLE_INTERVAL_MS = 1000
+REPORT_INTERVAL_MS = 60_000
+
+
+# ============================================================
 # DEBUG HELPERS
 # ============================================================
 
 def section(title):
+    if not DEBUG:
+        return
     print("\n" + "=" * 58)
     print(title)
     print("=" * 58)
@@ -433,54 +451,30 @@ print("Entering main loop...")
 # ============================================================
 
 loop_count = 0
-minute_counter = 0
-wind_avg = 0.0
-wind_gust = 0.0
-wind_dir = 0
+
 sht_temp_ema = None
 humidity_ema = None
-last_loop = time.ticks_ms() - config.LOOP_INTERVAL
-last_rain_save = time.ticks_ms()
 
+WIND_SAMPLE_INTERVAL_MS = 1000
+REPORT_INTERVAL_MS = 60_000
+RAIN_SAVE_INTERVAL_MS = 60_000
 
-def wifi_reconnect():
-    if wlan.isconnected():
-        return True
+now = time.ticks_ms()
 
-    print("WiFi lost - reconnecting...")
-    try:
-        wlan.disconnect()
-    except Exception:
-        pass
-    time.sleep(1)
-    wlan.connect(secrets.ssid, secrets.password)
+# Första vindprovet görs direkt.
+next_wind_sample = now
 
-    started = time.ticks_ms()
-    while not wlan.isconnected():
-        status = wlan.status()
-        print("  reconnect status:", status)
-        if time.ticks_diff(time.ticks_ms(), started) > 15000:
-            print("WiFi reconnect timeout")
-            return False
-        time.sleep(1)
+# Första kompletta rapporten görs efter en hel minut,
+# så att vindackumulatorn hinner få cirka 60 prover.
+next_report = time.ticks_add(
+    now,
+    REPORT_INTERVAL_MS
+)
 
-    print("WiFi reconnected:", wlan.ifconfig())
-    return True
-
-
-def mqtt_reconnect():
-    global client
-
-    try:
-        print("Reconnecting MQTT to", MQTT_SERVER)
-        client = MQTTClient("pico_weather", MQTT_SERVER)
-        client.connect()
-        print("MQTT reconnected")
-        return True
-    except Exception as error:
-        print("MQTT reconnect FAILED:", repr(error))
-        client = None
-        return False
+next_rain_save = time.ticks_add(
+    now,
+    RAIN_SAVE_INTERVAL_MS
+)
 
 
 # ============================================================
@@ -490,31 +484,143 @@ def mqtt_reconnect():
 while True:
     now = time.ticks_ms()
 
-    if time.ticks_diff(now, last_loop) >= config.LOOP_INTERVAL:
-        last_loop = now
+    # --------------------------------------------------------
+    # VINDPROV VARJE SEKUND
+    # --------------------------------------------------------
+
+    if time.ticks_diff(now, next_wind_sample) >= 0:
+        next_wind_sample = time.ticks_add(
+            next_wind_sample,
+            WIND_SAMPLE_INTERVAL_MS
+        )
+
+        try:
+            wind_data = wind_sensor.read()
+
+            if wind_minute.add_sample(wind_data):
+                if DEBUG and wind_data is not None:
+                    pass
+                    #print(
+                        #"Wind sample:",
+                        #wind_data["wind_speed"],
+                        #"m/s, raw direction:",
+                        #wind_data["wind_direction"])
+                else:
+                    print("Misslyckad vindavläsning")
+
+        except Exception as error:
+            print("Wind read FAILED:", repr(error))
+
+    # --------------------------------------------------------
+    # SPARA REGNTOTAL PERIODISKT
+    # --------------------------------------------------------
+
+    if time.ticks_diff(now, next_rain_save) >= 0:
+        next_rain_save = time.ticks_add(
+            next_rain_save,
+            RAIN_SAVE_INTERVAL_MS
+        )
+
+        try:
+            rain_state.save()
+
+            if DEBUG:
+                print("Rain state saved")
+
+        except Exception as error:
+            print("Rain state save FAILED:", repr(error))
+
+    # --------------------------------------------------------
+    # KOMPLETT MÄTCYKEL VARJE MINUT
+    # --------------------------------------------------------
+
+    if time.ticks_diff(now, next_report) >= 0:
+        next_report = time.ticks_add(
+            next_report,
+            REPORT_INTERVAL_MS
+        )
+
         loop_count += 1
 
         section("MEASUREMENT CYCLE {}".format(loop_count))
         print("Uptime ms:", now)
 
-        # Rescan each cycle while debugging. This can be removed later.
-        found_roms = scan_1wire(ds18)
-        ds_temps = read_ds18b20_sensors(ds18, DS18B20_SENSORS, found_roms)
-        selected_sensor, ds_temp = select_outdoor_temperature(ds_temps)
-        temp_box_ds18b20 = ds_temps.get("box")
-        
-        tips_per_minute = rain_tips_interval
-        rain_interval_mm = tips_per_minute * config.RAIN_MM_PER_TIP
+        # ----------------------------------------------------
+        # Vindminuten är redan insamlad
+        # ----------------------------------------------------
 
-        if (tips_per_minute > 0 and rain_tip_interval_ms is not None and rain_tip_interval_ms > 0):
-            rain_intensity = (config.RAIN_MM_PER_TIP * 3_600_000 / rain_tip_interval_ms)
+        wind = wind_minute.finish_minute()
+
+        if wind is None:
+            wind_avg = None
+            wind_gust = None
+            wind_dir = None
+            wind_samples = 0
+        else:
+            wind_avg = wind["wind_avg"]
+            wind_gust = wind["wind_gust"]
+            wind_dir = wind["wind_dir"]
+            wind_samples = wind["samples"]
+
+        print("Wind samples:", wind_samples)
+        print("Wind average:", wind_avg, "m/s")
+        print("Wind gust:", wind_gust, "m/s")
+        print("Wind direction:", wind_dir, "degrees")
+
+        # ----------------------------------------------------
+        # DS18B20
+        # ----------------------------------------------------
+
+        # Behåll omskanning medan systemet testas.
+        # När allt är stabilt kan found_roms från uppstarten användas.
+        if DEBUG:
+            found_roms = scan_1wire(ds18)
+
+        ds_temps = read_ds18b20_sensors(
+            ds18,
+            DS18B20_SENSORS,
+            found_roms
+        )
+
+        selected_sensor, ds_temp = select_outdoor_temperature(
+            ds_temps
+        )
+
+        temp_box_ds18b20 = ds_temps.get("box")
+
+        # ----------------------------------------------------
+        # Regn
+        # ----------------------------------------------------
+
+        # Ta en lokal kopia före nollställningen.
+        tips_per_minute = rain_tips_interval
+        rain_tips_interval = 0
+
+        rain_interval_mm = (
+            tips_per_minute * config.RAIN_MM_PER_TIP
+        )
+
+        if (
+            tips_per_minute > 0
+            and rain_tip_interval_ms is not None
+            and rain_tip_interval_ms > 0
+        ):
+            rain_intensity = (
+                config.RAIN_MM_PER_TIP
+                * 3_600_000
+                / rain_tip_interval_ms
+            )
         else:
             rain_intensity = 0.0
-       
+
         print("Rain tips this cycle:", tips_per_minute)
         print("Rain interval mm:", rain_interval_mm)
         print("Rain intensity mm/h:", rain_intensity)
         print("Rain total tips:", rain_state.rain_count)
+
+        # ----------------------------------------------------
+        # SHT41
+        # ----------------------------------------------------
 
         print("Reading SHT41...")
         temp_1, humidity = read_sht41_avg(sht, n=3)
@@ -525,30 +631,49 @@ while True:
                 humidity_ema = humidity
             else:
                 alpha = 0.2
-                sht_temp_ema = alpha * temp_1 + (1 - alpha) * sht_temp_ema
-                humidity_ema = alpha * humidity + (1 - alpha) * humidity_ema
+
+                sht_temp_ema = (
+                    alpha * temp_1
+                    + (1.0 - alpha) * sht_temp_ema
+                )
+
+                humidity_ema = (
+                    alpha * humidity
+                    + (1.0 - alpha) * humidity_ema
+                )
 
             temp_1 = sht_temp_ema
             humidity = humidity_ema
+
         else:
             print("SHT41 returned no valid measurement")
 
+        # ----------------------------------------------------
+        # MS5637
+        # ----------------------------------------------------
+
         print("Reading MS5637...")
+
         try:
-            temp_2, pressure = MS5637.read_temperature_and_pressure()
-            print("MS5637: temp={} pressure={}".format(temp_2, pressure))
+            temp_2, pressure = (
+                MS5637.read_temperature_and_pressure()
+            )
+
+            print(
+                "MS5637: temp={} pressure={}".format(
+                    temp_2,
+                    pressure
+                )
+            )
+
         except Exception as error:
             print("MS5637 read FAILED:", repr(error))
             temp_2 = None
             pressure = None
 
-        if time.ticks_diff(now, last_rain_save) >= SAVE_INTERVAL:
-            last_rain_save = now
-            try:
-                rain_state.save()
-                print("Rain state saved")
-            except Exception as error:
-                print("Rain state save FAILED:", repr(error))
+        # ----------------------------------------------------
+        # Summering
+        # ----------------------------------------------------
 
         print("Cycle summary:")
         print("  temp:", ds_temp)
@@ -558,9 +683,17 @@ while True:
         print("  humidity:", humidity)
         print("  MS5637 temp:", temp_2)
         print("  pressure:", pressure)
+        print("  wind average:", wind_avg)
+        print("  wind gust:", wind_gust)
+        print("  wind direction:", wind_dir)
+
+        # ----------------------------------------------------
+        # OLED
+        # ----------------------------------------------------
 
         oled.fill(0)
         oled.text("VOGON DEBUG", 0, 0)
+
         if ds_temp is None:
             oled.text("T: --.-C", 0, 14)
         else:
@@ -576,8 +709,23 @@ while True:
         else:
             oled.text("H: %.0f%%" % humidity, 0, 38)
 
-        oled.text("S:" + str(selected_sensor or "NONE")[:13], 0, 50)
+        if wind_avg is None:
+            oled.text("W: --.-m/s", 0, 50)
+        else:
+            oled.text(
+                "W: %.1f/%.1f" % (
+                    wind_avg,
+                    wind_gust
+                ),
+                0,
+                50
+            )
+
         oled.show()
+
+        # ----------------------------------------------------
+        # Nätverkskontroll
+        # ----------------------------------------------------
 
         if not wlan.isconnected():
             print("WiFi disconnected before publish")
@@ -586,44 +734,68 @@ while True:
         if client is None:
             mqtt_reconnect()
 
+        # ----------------------------------------------------
+        # MQTT
+        # ----------------------------------------------------
+
         data = {
             "temp": ds_temp,
             "temp_selected_sensor": selected_sensor,
+
             "temp_green_nw": ds_temps.get("green_nw"),
             "temp_red_wnw": ds_temps.get("red_wnw"),
             "temp_blue_ne": ds_temps.get("blue_ne"),
             "temp_purple_ese": ds_temps.get("purple_ese"),
-            "temp_box_ds18b20": ds_temps.get("box"),
+            "temp_box_ds18b20": temp_box_ds18b20,
+
             "temp_sht": temp_1,
             "temp_ms5637": temp_2,
             "pressure": pressure,
             "humidity": humidity,
-            "rain_total": rain_state.mm(config.RAIN_MM_PER_TIP),
+
+            "rain_total": rain_state.mm(
+                config.RAIN_MM_PER_TIP
+            ),
+            "rain_total_tips": rain_state.rain_count,
             "rain_interval": tips_per_minute,
             "rain_interval_mm": rain_interval_mm,
             "rain_intensity": rain_intensity,
+
             "wind_avg": wind_avg,
             "wind_gust": wind_gust,
             "wind_dir": wind_dir,
-            "rain_total_tips": rain_state.rain_count,
+            "wind_samples": wind_samples,
         }
 
         payload = ujson.dumps(data)
+
         print("MQTT payload:")
         print(payload)
 
         if client is not None:
             try:
-                client.publish(MQTT_TOPIC, payload)
-                print("MQTT publish OK to", MQTT_TOPIC)
+                client.publish(
+                    MQTT_TOPIC,
+                    payload
+                )
+
+                print(
+                    "MQTT publish OK to",
+                    MQTT_TOPIC
+                )
+
             except Exception as error:
-                print("MQTT publish FAILED:", repr(error))
+                print(
+                    "MQTT publish FAILED:",
+                    repr(error)
+                )
+
                 client = None
+
         else:
             print("MQTT publish skipped: no client")
 
-        rain_tips_interval = 0
-        minute_counter += 1
         print("Cycle complete")
 
+    # Loopen går snabbt, men inte helt utan vila.
     time.sleep_ms(10)
