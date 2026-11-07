@@ -157,39 +157,50 @@ def history_rain(hours: int = 24):
 def pressure_trend(hours: int = 6):
     conn = get_db()
     cur = conn.cursor()
+    
+    cur.execute("""
+    SELECT
+    MAX(COALESCE(pressure_slp, pressure)) AS pmax,
+    MIN(COALESCE(pressure_slp, pressure)) AS pmin
+    FROM weather
+    WHERE timestamp >= datetime('now', '-24 hours')
+    """)
+    stats = cur.fetchone()
 
     cur.execute("""
     SELECT timestamp, COALESCE(pressure_slp, pressure) AS pressure_slp
-        FROM weather
-        ORDER BY timestamp DESC
-        LIMIT 1
+    FROM weather
+    ORDER BY timestamp DESC
+    LIMIT 1
     """)
     latest = cur.fetchone()
 
     cur.execute("""
     SELECT timestamp, COALESCE(pressure_slp, pressure) AS pressure_slp
-        FROM weather
-        WHERE timestamp <= datetime('now', ?)
-        ORDER BY timestamp DESC
-        LIMIT 1
+    FROM weather
+    WHERE timestamp <= datetime('now', ?)
+    ORDER BY timestamp DESC
+    LIMIT 1
     """, (f"-{hours} hours",))
     old = cur.fetchone()
 
     cur.execute("""
-    SELECT
-        MAX(COALESCE(pressure_slp, pressure)) as pmax,
-        MIN(COALESCE(pressure_slp, pressure)) as pmin
-        FROM weather
-        WHERE timestamp >= datetime('now','-24 hours')
+    SELECT timestamp, COALESCE(pressure_slp, pressure) AS pressure_slp
+    FROM weather
+    WHERE timestamp <= datetime('now', '-24 hours')
+    ORDER BY timestamp DESC
+    LIMIT 1
     """)
-    stats = cur.fetchone()
+    old24 = cur.fetchone()
     
     conn.close()
 
-    if latest is None or old is None:
+    if latest is None or old is None or old24 is None:
         return {"error": "not enough data"}
-
+    # for 6h chanage
     delta = latest["pressure_slp"] - old["pressure_slp"]
+    # for 24h change
+    delta24 = latest["pressure_slp"] - old24["pressure_slp"]
 
     if delta > 2:
         arrow = "↑"
@@ -215,13 +226,11 @@ def pressure_trend(hours: int = 6):
     "arrow": arrow,
     "text": text,
 
+    "delta24": round(delta24, 1),
+
     "pmax": round(stats["pmax"], 1),
     "pmin": round(stats["pmin"], 1),
-
-    "delta24": round(
-        latest["pressure_slp"] - stats["pmax"],
-        1
-    )
+    "range24": round(stats["pmax"] - stats["pmin"], 1)
 }
 @app.get("/api/rain/summary")
 def rain_summary():

@@ -295,11 +295,9 @@ async function loadEnvChart() {
     }
 }
 
-
 // ---------------- PRESSURE CHART ----------------
 
 let pressureChart = null;
-
 
 async function loadPressureChart() {
     try {
@@ -309,6 +307,33 @@ async function loadPressureChart() {
 
         const rows = result.data ?? [];
         const labels = chartLabels(rows);
+
+        // Hämta giltiga lufttrycksvärden
+        const pressures = rows
+            .map(row => row.pressure_slp)
+            .filter(value =>
+                typeof value === "number" &&
+                Number.isFinite(value)
+            );
+
+        // Dynamisk Y-axel med 5 hPa marginal
+        let yMin = 970;
+        let yMax = 1050;
+
+        if (pressures.length > 0) {
+            const minPressure = Math.min(...pressures);
+            const maxPressure = Math.max(...pressures);
+
+            const margin = 5;
+
+            yMin = Math.floor(
+                (minPressure - margin) / 5
+            ) * 5;
+
+            yMax = Math.ceil(
+                (maxPressure + margin) / 5
+            ) * 5;
+        }
 
         if (pressureChart) {
             pressureChart.destroy();
@@ -337,8 +362,8 @@ async function loadPressureChart() {
                     spanGaps: true,
                     scales: {
                         y: {
-                            min: 970,
-                            max: 1030
+                            min: yMin,
+                            max: yMax
                         }
                     }
                 }
@@ -350,8 +375,7 @@ async function loadPressureChart() {
     }
 }
 
-
-// ---------------- RAIN CHART ----------------
+//   ---------------- RAIN CHART ----------------
 
 let rainChart = null;
 

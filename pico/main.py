@@ -341,6 +341,59 @@ except Exception as error:
     print("MS5637 initialization FAILED:", repr(error))
     raise
 
+def wifi_reconnect():
+    print("WiFi reconnecting...")
+
+    if wlan.isconnected():
+        return True
+
+    wlan.disconnect()
+    time.sleep_ms(500)
+    wlan.connect(secrets.ssid, secrets.password)
+
+    for attempt in range(20):
+        if wlan.isconnected():
+            print("WiFi reconnected:", wlan.ifconfig()[0])
+            return True
+        time.sleep(1)
+
+    print("WiFi reconnect FAILED")
+    return False
+
+
+def mqtt_reconnect():
+    global client
+
+    print("MQTT reconnecting...")
+
+    if not wlan.isconnected():
+        if not wifi_reconnect():
+            client = None
+            return False
+
+    if client is not None:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+
+    client = None
+
+    try:
+        new_client = MQTTClient(
+            "pico_weather",
+            MQTT_SERVER,
+            keepalive=120
+        )
+        new_client.connect()
+        client = new_client
+        print("MQTT reconnected OK")
+        return True
+
+    except Exception as error:
+        print("MQTT reconnect FAILED:", repr(error))
+        client = None
+        return False
 
 # ============================================================
 # WIFI STARTUP
@@ -392,7 +445,7 @@ time.sleep(1)
 section("MQTT")
 print("MQTT server:", MQTT_SERVER)
 print("Creating MQTT client...")
-client = MQTTClient("pico_weather", MQTT_SERVER)
+client = MQTTClient("pico_weather", MQTT_SERVER, keepalive=120)
 
 oled_message("Connecting MQTT", str(MQTT_SERVER))
 try:
@@ -729,6 +782,10 @@ while True:
 
         if not wlan.isconnected():
             print("WiFi disconnected before publish")
+
+    # Den gamla MQTT-anslutningen är inte längre pålitlig
+            client = None
+
             wifi_reconnect()
 
         if client is None:
